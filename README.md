@@ -59,7 +59,20 @@ order 1003
 
 ## Logs
 
-`Log` is a two-method interface: `Append` an event, read a saga's `Events`. `MemoryLog`, the default, makes sagas resumable within a process. Implement `Log` on your database to survive restarts; `Append` must be durable before it returns.
+`Log` is a two-method interface: `Append` an event, read a saga's `Events`.
+
+| | |
+|---|---|
+| `MemoryLog` (default) | resumable within a process |
+| `NewFileLog(dir)` | survives restarts: one JSON-lines file per saga, `fsync`ed on every append |
+| your own | implement `Log` on your database; `Append` must be durable before it returns |
+
+`FileLog` handles the crash cases: a last line torn by a crash mid-write was never acknowledged, so it is dropped, while a broken line anywhere else is reported as corruption instead of silently shortening the history. Any saga ID maps to a safe, distinct file name (`orders/2026:42` can't escape the directory). Run a given saga ID from one process at a time.
+
+```go
+log, err := saga.NewFileLog("/var/lib/myapp/sagas")
+checkout.Log = log
+```
 
 ## Tests
 
@@ -67,7 +80,7 @@ order 1003
 go test -race ./...
 ```
 
-Compensation order (failed step included), retries with stable keys, permanent errors, stuck compensations, resuming after an interruption both mid-forward and mid-compensation, and re-running a finished saga.
+Compensation order (failed step included), retries with stable keys, permanent errors, stuck compensations, resuming after an interruption both mid-forward and mid-compensation, re-running a finished saga, and for `FileLog`: resuming from a fresh log on the same directory, torn last lines vs. corruption, and safe file names.
 
 ## License
 
